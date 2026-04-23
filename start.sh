@@ -4,14 +4,15 @@ set -euo pipefail
 APP_NAME="esp32-monitor"
 APP_PORT="${PORT:-3000}"
 DOMAIN="${1:-${DOMAIN:-}}"
+INPUT_API_KEY="${2:-${API_KEY_INPUT:-}}"
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$APP_DIR/.env"
 NGINX_CONF="/etc/nginx/sites-available/${APP_NAME}.conf"
 NGINX_LINK="/etc/nginx/sites-enabled/${APP_NAME}.conf"
 
 if [[ -z "$DOMAIN" ]]; then
-  echo "Usage: bash start.sh <domain-atau-ip>"
-  echo "Contoh: bash start.sh sensor.example.com"
+  echo "Usage: bash start.sh <domain-atau-ip> [api-key]"
+  echo "Contoh: bash start.sh sensor.example.com my-super-secret-key"
   exit 1
 fi
 
@@ -28,29 +29,40 @@ if ! command -v pm2 >/dev/null 2>&1; then
 fi
 
 if [[ ! -f "$ENV_FILE" ]]; then
-  API_KEY="$(openssl rand -hex 32)"
+  API_KEY_VALUE="${INPUT_API_KEY:-$(openssl rand -hex 32)}"
   cat > "$ENV_FILE" <<EOF
 PORT=${APP_PORT}
 DOMAIN=${DOMAIN}
-API_KEY=${API_KEY}
+API_KEY=${API_KEY_VALUE}
 NODE_ENV=production
 EOF
   echo ".env dibuat otomatis"
 else
   source "$ENV_FILE"
-  EXISTING_API_KEY="${API_KEY:-}"
-  if [[ -z "$EXISTING_API_KEY" ]]; then
-    NEW_KEY="$(openssl rand -hex 32)"
-    echo "API_KEY=${NEW_KEY}" >> "$ENV_FILE"
-    echo "API key ditambahkan ke .env"
-  fi
+
   if ! grep -q '^DOMAIN=' "$ENV_FILE"; then
     echo "DOMAIN=${DOMAIN}" >> "$ENV_FILE"
   else
     sed -i "s|^DOMAIN=.*|DOMAIN=${DOMAIN}|" "$ENV_FILE"
   fi
+
   if ! grep -q '^PORT=' "$ENV_FILE"; then
     echo "PORT=${APP_PORT}" >> "$ENV_FILE"
+  fi
+
+  if [[ -n "$INPUT_API_KEY" ]]; then
+    if grep -q '^API_KEY=' "$ENV_FILE"; then
+      sed -i "s|^API_KEY=.*|API_KEY=${INPUT_API_KEY}|" "$ENV_FILE"
+    else
+      echo "API_KEY=${INPUT_API_KEY}" >> "$ENV_FILE"
+    fi
+  else
+    EXISTING_API_KEY="${API_KEY:-}"
+    if [[ -z "$EXISTING_API_KEY" ]]; then
+      NEW_KEY="$(openssl rand -hex 32)"
+      echo "API_KEY=${NEW_KEY}" >> "$ENV_FILE"
+      echo "API key ditambahkan ke .env"
+    fi
   fi
 fi
 
@@ -62,7 +74,7 @@ echo "Start app via pm2..."
 pm2 start ecosystem.config.cjs --name "$APP_NAME" --update-env || pm2 restart "$APP_NAME" --update-env
 pm2 save
 
-if [[ ! -f /etc/nginx/sites-available/default ]]; then
+if [[ ! -d /etc/nginx/sites-available ]]; then
   sudo mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
 fi
 

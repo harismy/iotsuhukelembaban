@@ -2,17 +2,32 @@
 
 Dashboard web + API Node.js Express untuk menerima data suhu dan kelembaban dari ESP32 (DHT11).
 
-## Jalankan deployment otomatis (server Linux)
+## Auto install dari link (server Linux)
+
+Jalankan langsung dari server:
 
 ```bash
-bash start.sh domain-anda.com
+curl -fsSL https://raw.githubusercontent.com/harismy/iotsuhukelembaban/main/install.sh | bash -s -- domain-anda.com API_KEY_ANDA
+```
+
+Contoh:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/harismy/iotsuhukelembaban/main/install.sh | bash -s -- sensor.example.com key123sensor
 ```
 
 Script akan otomatis:
-- generate `.env` + `API_KEY` (jika belum ada)
+- clone/update project ke `/opt/iotsuhukelembaban`
+- simpan `DOMAIN` dan `API_KEY` ke `.env`
 - install dependency node
-- start app dengan PM2
-- buat konfigurasi Nginx reverse proxy ke Express
+- jalankan app dengan PM2
+- setup Nginx reverse proxy ke app
+
+## Jalankan deployment manual dari folder project
+
+```bash
+bash start.sh domain-anda.com API_KEY_ANDA
+```
 
 ## Endpoint
 
