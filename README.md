@@ -16,6 +16,12 @@ Contoh:
 curl -fsSL https://raw.githubusercontent.com/harismy/iotsuhukelembaban/main/install.sh | bash -s -- sensor.example.com key123sensor
 ```
 
+Jika port `3000` bentrok dengan app lain, tambahkan argumen port:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/harismy/iotsuhukelembaban/main/install.sh | bash -s -- sensor.example.com key123sensor 3010
+```
+
 Script akan otomatis:
 - clone/update project ke `/opt/iotsuhukelembaban`
 - simpan `DOMAIN` dan `API_KEY` ke `.env`
@@ -27,6 +33,12 @@ Script akan otomatis:
 
 ```bash
 bash start.sh domain-anda.com API_KEY_ANDA
+```
+
+Atau dengan port custom:
+
+```bash
+bash start.sh domain-anda.com API_KEY_ANDA 3010
 ```
 
 ## Endpoint

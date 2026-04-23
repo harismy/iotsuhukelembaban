@@ -2,7 +2,8 @@
 set -euo pipefail
 
 APP_NAME="esp32-monitor"
-APP_PORT="${PORT:-3000}"
+DEFAULT_PORT="3000"
+REQUESTED_PORT="${3:-${PORT:-}}"
 DOMAIN="${1:-${DOMAIN:-}}"
 INPUT_API_KEY="${2:-${API_KEY_INPUT:-}}"
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,8 +13,8 @@ NGINX_LINK="/etc/nginx/sites-enabled/${APP_NAME}.conf"
 PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 
 if [[ -z "$DOMAIN" ]]; then
-  echo "Usage: bash start.sh <domain-atau-ip> [api-key]"
-  echo "Contoh: bash start.sh sensor.example.com my-super-secret-key"
+  echo "Usage: bash start.sh <domain-atau-ip> [api-key] [port]"
+  echo "Contoh: bash start.sh sensor.example.com my-super-secret-key 3010"
   exit 1
 fi
 
@@ -56,6 +57,7 @@ fi
 ensure_nginx
 
 if [[ ! -f "$ENV_FILE" ]]; then
+  APP_PORT="${REQUESTED_PORT:-$DEFAULT_PORT}"
   API_KEY_VALUE="${INPUT_API_KEY:-$(openssl rand -hex 32)}"
   cat > "$ENV_FILE" <<EOF
 PORT=${APP_PORT}
@@ -66,6 +68,7 @@ EOF
   echo ".env dibuat otomatis"
 else
   source "$ENV_FILE"
+  APP_PORT="${REQUESTED_PORT:-${PORT:-$DEFAULT_PORT}}"
 
   if ! grep -q '^DOMAIN=' "$ENV_FILE"; then
     echo "DOMAIN=${DOMAIN}" >> "$ENV_FILE"
@@ -75,6 +78,8 @@ else
 
   if ! grep -q '^PORT=' "$ENV_FILE"; then
     echo "PORT=${APP_PORT}" >> "$ENV_FILE"
+  else
+    sed -i "s|^PORT=.*|PORT=${APP_PORT}|" "$ENV_FILE"
   fi
 
   if [[ -n "$INPUT_API_KEY" ]]; then

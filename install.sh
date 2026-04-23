@@ -5,6 +5,7 @@ REPO_URL="https://github.com/harismy/iotsuhukelembaban.git"
 APP_DIR="${APP_DIR:-/opt/iotsuhukelembaban}"
 DOMAIN="${1:-}"
 INPUT_API_KEY="${2:-}"
+INPUT_PORT="${3:-}"
 
 if [[ -z "$DOMAIN" ]]; then
   read -r -p "Masukkan domain/IP server: " DOMAIN
@@ -38,6 +39,6 @@ fi
 
 echo "Jalankan setup aplikasi..."
 cd "$APP_DIR"
-bash start.sh "$DOMAIN" "$INPUT_API_KEY"
+bash start.sh "$DOMAIN" "$INPUT_API_KEY" "$INPUT_PORT"
 
 echo "Selesai."
