@@ -7,12 +7,12 @@
 
 DHT dht(DHTPIN, DHTTYPE);
 
-const char* ssid = "GANTI_WIFI";
-const char* password = "GANTI_PASSWORD_WIFI";
+const char* ssid = "TECNO POVA 7 Ultra 5G";
+const char* password = "201219[]Mycan";
 
 // Ganti 2 value di bawah sesuai output start.sh
-const char* API_URL = "http://domain-anda.com/api/v1/readings";
-const char* API_KEY = "ISI_DENGAN_API_KEY_DARI_ENV";
+const char* API_URL = "http://iot.1forcrkuota.com/api/v1/readings";
+const char* API_KEY = "qwertyuiopasdfghjklzxcvbnm";
 
 unsigned long lastSentAt = 0;
 const unsigned long sendIntervalMs = 5000;

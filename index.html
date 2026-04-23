@@ -26,21 +26,37 @@
     </header>
 
     <main class="cards-grid">
-      <div class="sensor-card temperature-card">
-        <div class="card-icon">TEMP</div>
+      <section class="sensor-card temperature-card">
         <h2>Suhu Ruangan</h2>
-        <div class="sensor-value" id="temperatureValue">--</div>
-        <div class="sensor-unit">C</div>
-        <div class="sensor-description">Celsius</div>
-      </div>
+        <div class="gauge-wrap">
+          <svg class="gauge-svg" viewBox="0 0 240 150" role="img" aria-label="Gauge suhu">
+            <path class="gauge-track" d="M20 130 A100 100 0 0 1 220 130" pathLength="100"></path>
+            <path class="gauge-progress" id="tempArc" d="M20 130 A100 100 0 0 1 220 130" pathLength="100"></path>
+          </svg>
+          <div class="needle" id="tempNeedle"></div>
+          <div class="gauge-center-dot"></div>
+          <div class="gauge-label gauge-min">0</div>
+          <div class="gauge-label gauge-mid">25</div>
+          <div class="gauge-label gauge-max">50</div>
+        </div>
+        <div class="sensor-value"><span id="temperatureValue">--</span><small>deg C</small></div>
+      </section>
 
-      <div class="sensor-card humidity-card">
-        <div class="card-icon">HUM</div>
+      <section class="sensor-card humidity-card">
         <h2>Kelembaban</h2>
-        <div class="sensor-value" id="humidityValue">--</div>
-        <div class="sensor-unit">% RH</div>
-        <div class="sensor-description">Relative Humidity</div>
-      </div>
+        <div class="gauge-wrap">
+          <svg class="gauge-svg" viewBox="0 0 240 150" role="img" aria-label="Gauge kelembaban">
+            <path class="gauge-track" d="M20 130 A100 100 0 0 1 220 130" pathLength="100"></path>
+            <path class="gauge-progress" id="humArc" d="M20 130 A100 100 0 0 1 220 130" pathLength="100"></path>
+          </svg>
+          <div class="needle" id="humNeedle"></div>
+          <div class="gauge-center-dot"></div>
+          <div class="gauge-label gauge-min">0</div>
+          <div class="gauge-label gauge-mid">50</div>
+          <div class="gauge-label gauge-max">100</div>
+        </div>
+        <div class="sensor-value"><span id="humidityValue">--</span><small>% RH</small></div>
+      </section>
     </main>
 
     <footer class="dashboard-footer">

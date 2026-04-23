@@ -2,6 +2,11 @@
 
 const tempElem = document.getElementById('temperatureValue');
 const humElem = document.getElementById('humidityValue');
+const tempNeedle = document.getElementById('tempNeedle');
+const humNeedle = document.getElementById('humNeedle');
+const tempArc = document.getElementById('tempArc');
+const humArc = document.getElementById('humArc');
+
 const lastUpdateElem = document.getElementById('sensorLastUpdate');
 const statusDot = document.getElementById('statusDot');
 const statusText = document.getElementById('statusText');
@@ -11,6 +16,21 @@ const realtimeClock = document.getElementById('realtimeClock');
 let isFetching = false;
 let autoRefreshInterval = null;
 let clockInterval = null;
+let animationFrame = null;
+
+const gaugeConfig = {
+  temperature: { min: 0, max: 50, valueElem: tempElem, needleElem: tempNeedle, arcElem: tempArc },
+  humidity: { min: 0, max: 100, valueElem: humElem, needleElem: humNeedle, arcElem: humArc },
+};
+
+const gaugeState = {
+  temperature: { current: 0, target: 0, initialized: false },
+  humidity: { current: 0, target: 0, initialized: false },
+};
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
 
 function getCurrentTimeString(date = new Date()) {
   return date.toLocaleTimeString('id-ID', {
@@ -33,6 +53,45 @@ function updateConnectionUI(isOnline, errorMsg = '') {
 
 function updateClock() {
   realtimeClock.innerText = getCurrentTimeString();
+}
+
+function renderGauge(name, value) {
+  const config = gaugeConfig[name];
+  const normalized = clamp((value - config.min) / (config.max - config.min), 0, 1);
+  const angle = -120 + normalized * 240;
+
+  config.valueElem.innerText = value.toFixed(1);
+  config.needleElem.style.transform = `rotate(${angle.toFixed(2)}deg)`;
+  config.arcElem.style.strokeDashoffset = (100 - normalized * 100).toFixed(2);
+}
+
+function setGaugeTarget(name, value) {
+  const state = gaugeState[name];
+  if (!state.initialized) {
+    state.current = value;
+    state.initialized = true;
+  }
+  state.target = value;
+}
+
+function animationLoop() {
+  for (const key of Object.keys(gaugeState)) {
+    const state = gaugeState[key];
+    if (!state.initialized) {
+      continue;
+    }
+
+    const diff = state.target - state.current;
+    if (Math.abs(diff) > 0.01) {
+      state.current += diff * 0.08;
+    } else {
+      state.current = state.target;
+    }
+
+    renderGauge(key, state.current);
+  }
+
+  animationFrame = requestAnimationFrame(animationLoop);
 }
 
 async function fetchSensorData() {
@@ -66,8 +125,8 @@ async function fetchSensorData() {
       throw new Error('Nilai sensor tidak valid');
     }
 
-    tempElem.innerText = temperature.toFixed(1);
-    humElem.innerText = humidity.toFixed(1);
+    setGaugeTarget('temperature', temperature);
+    setGaugeTarget('humidity', humidity);
 
     if (data.receivedAt) {
       const receivedDate = new Date(data.receivedAt);
@@ -77,13 +136,6 @@ async function fetchSensorData() {
     }
 
     updateConnectionUI(true);
-
-    tempElem.style.transform = 'scale(1.02)';
-    humElem.style.transform = 'scale(1.02)';
-    setTimeout(() => {
-      tempElem.style.transform = '';
-      humElem.style.transform = '';
-    }, 150);
   } catch (error) {
     let errorMessage = 'Gagal ambil data';
     if (error.name === 'AbortError') {
@@ -126,6 +178,7 @@ function startClock() {
 
 window.addEventListener('DOMContentLoaded', () => {
   startClock();
+  animationFrame = requestAnimationFrame(animationLoop);
   fetchSensorData();
   startAutoRefresh();
   refreshBtn.addEventListener('click', manualRefresh);
@@ -137,5 +190,8 @@ window.addEventListener('beforeunload', () => {
   }
   if (clockInterval) {
     clearInterval(clockInterval);
+  }
+  if (animationFrame) {
+    cancelAnimationFrame(animationFrame);
   }
 });
