@@ -1,0 +1,102 @@
+﻿#!/usr/bin/env bash
+set -euo pipefail
+
+APP_NAME="esp32-monitor"
+APP_PORT="${PORT:-3000}"
+DOMAIN="${1:-${DOMAIN:-}}"
+APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="$APP_DIR/.env"
+NGINX_CONF="/etc/nginx/sites-available/${APP_NAME}.conf"
+NGINX_LINK="/etc/nginx/sites-enabled/${APP_NAME}.conf"
+
+if [[ -z "$DOMAIN" ]]; then
+  echo "Usage: bash start.sh <domain-atau-ip>"
+  echo "Contoh: bash start.sh sensor.example.com"
+  exit 1
+fi
+
+for cmd in node npm nginx openssl; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "Error: command '$cmd' belum terinstall."
+    exit 1
+  fi
+done
+
+if ! command -v pm2 >/dev/null 2>&1; then
+  echo "pm2 belum ada, install global..."
+  sudo npm install -g pm2
+fi
+
+if [[ ! -f "$ENV_FILE" ]]; then
+  API_KEY="$(openssl rand -hex 32)"
+  cat > "$ENV_FILE" <<EOF
+PORT=${APP_PORT}
+DOMAIN=${DOMAIN}
+API_KEY=${API_KEY}
+NODE_ENV=production
+EOF
+  echo ".env dibuat otomatis"
+else
+  source "$ENV_FILE"
+  EXISTING_API_KEY="${API_KEY:-}"
+  if [[ -z "$EXISTING_API_KEY" ]]; then
+    NEW_KEY="$(openssl rand -hex 32)"
+    echo "API_KEY=${NEW_KEY}" >> "$ENV_FILE"
+    echo "API key ditambahkan ke .env"
+  fi
+  if ! grep -q '^DOMAIN=' "$ENV_FILE"; then
+    echo "DOMAIN=${DOMAIN}" >> "$ENV_FILE"
+  else
+    sed -i "s|^DOMAIN=.*|DOMAIN=${DOMAIN}|" "$ENV_FILE"
+  fi
+  if ! grep -q '^PORT=' "$ENV_FILE"; then
+    echo "PORT=${APP_PORT}" >> "$ENV_FILE"
+  fi
+fi
+
+echo "Install dependency node..."
+cd "$APP_DIR"
+npm install
+
+echo "Start app via pm2..."
+pm2 start ecosystem.config.cjs --name "$APP_NAME" --update-env || pm2 restart "$APP_NAME" --update-env
+pm2 save
+
+if [[ ! -f /etc/nginx/sites-available/default ]]; then
+  sudo mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled
+fi
+
+echo "Tulis konfigurasi nginx..."
+sudo tee "$NGINX_CONF" >/dev/null <<EOF
+server {
+    listen 80;
+    server_name ${DOMAIN};
+
+    location / {
+        proxy_pass http://127.0.0.1:${APP_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_cache_bypass \$http_upgrade;
+    }
+}
+EOF
+
+sudo ln -sf "$NGINX_CONF" "$NGINX_LINK"
+if [[ -f /etc/nginx/sites-enabled/default ]]; then
+  sudo rm -f /etc/nginx/sites-enabled/default
+fi
+
+sudo nginx -t
+sudo systemctl restart nginx
+
+echo "Deploy selesai"
+echo "Domain : ${DOMAIN}"
+echo "App dir: ${APP_DIR}"
+echo "Lihat API key di: ${ENV_FILE}"
+echo "Endpoint ingest ESP32: http://${DOMAIN}/api/v1/readings"
+echo "Endpoint dashboard   : http://${DOMAIN}/"

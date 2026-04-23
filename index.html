@@ -1,0 +1,55 @@
+﻿<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <title>DHT11 Dashboard | ESP32</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <div class="dashboard-container">
+    <header class="dashboard-header">
+      <h1>DHT11 Sensor Monitor</h1>
+      <p class="subtitle">Monitoring suhu dan kelembaban dari ESP32</p>
+
+      <div class="header-row">
+        <div class="connection-status">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Menghubungkan...</span>
+        </div>
+        <div class="realtime-info">
+          <span class="realtime-label">Waktu Lokal</span>
+          <span class="realtime-clock" id="realtimeClock">--:--:--</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="cards-grid">
+      <div class="sensor-card temperature-card">
+        <div class="card-icon">TEMP</div>
+        <h2>Suhu Ruangan</h2>
+        <div class="sensor-value" id="temperatureValue">--</div>
+        <div class="sensor-unit">C</div>
+        <div class="sensor-description">Celsius</div>
+      </div>
+
+      <div class="sensor-card humidity-card">
+        <div class="card-icon">HUM</div>
+        <h2>Kelembaban</h2>
+        <div class="sensor-value" id="humidityValue">--</div>
+        <div class="sensor-unit">% RH</div>
+        <div class="sensor-description">Relative Humidity</div>
+      </div>
+    </main>
+
+    <footer class="dashboard-footer">
+      <div class="sensor-update">
+        Data terakhir dari sensor: <span id="sensorLastUpdate">--:--:--</span>
+      </div>
+      <button class="refresh-btn" id="refreshBtn">Refresh Sekarang</button>
+      <div class="auto-refresh-info">Auto refresh setiap 3 detik</div>
+    </footer>
+  </div>
+</body>
+</html>
