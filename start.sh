@@ -11,6 +11,7 @@ ENV_FILE="$APP_DIR/.env"
 NGINX_CONF="/etc/nginx/sites-available/${APP_NAME}.conf"
 NGINX_LINK="/etc/nginx/sites-enabled/${APP_NAME}.conf"
 PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+HTTPS_URL="http://${DOMAIN}/"
 
 if [[ -z "$DOMAIN" ]]; then
   echo "Usage: bash start.sh <domain-atau-ip> [api-key] [port]"
@@ -49,6 +50,76 @@ ensure_nginx() {
   fi
 }
 
+install_packages() {
+  if command -v apt-get >/dev/null 2>&1; then
+    sudo apt-get update
+    sudo apt-get install -y "$@"
+  elif command -v dnf >/dev/null 2>&1; then
+    sudo dnf install -y "$@"
+  elif command -v yum >/dev/null 2>&1; then
+    sudo yum install -y "$@"
+  else
+    echo "Error: package manager tidak didukung."
+    exit 1
+  fi
+}
+
+is_ip_address() {
+  [[ "$1" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ || "$1" =~ ^[0-9a-fA-F:]+$ ]]
+}
+
+ensure_certbot() {
+  if command -v certbot >/dev/null 2>&1; then
+    return
+  fi
+
+  echo "Certbot belum ada, mencoba install..."
+  if command -v apt-get >/dev/null 2>&1; then
+    install_packages certbot python3-certbot-nginx
+  elif command -v dnf >/dev/null 2>&1; then
+    install_packages certbot python3-certbot-nginx
+  elif command -v yum >/dev/null 2>&1; then
+    install_packages certbot python3-certbot-nginx
+  fi
+}
+
+enable_https() {
+  local enable_https_value
+  local cert_email
+
+  enable_https_value="$(grep -m1 '^ENABLE_HTTPS=' "$ENV_FILE" | cut -d= -f2- || true)"
+  cert_email="$(grep -m1 '^LETSENCRYPT_EMAIL=' "$ENV_FILE" | cut -d= -f2- || true)"
+
+  if [[ "${enable_https_value:-true}" == "false" || "${enable_https_value:-true}" == "0" ]]; then
+    echo "HTTPS dilewati karena ENABLE_HTTPS=${enable_https_value}"
+    return
+  fi
+
+  if is_ip_address "$DOMAIN"; then
+    echo "HTTPS dilewati: Let's Encrypt membutuhkan domain, bukan IP (${DOMAIN})."
+    return
+  fi
+
+  ensure_certbot
+
+  local certbot_args=(--nginx -d "$DOMAIN" --non-interactive --agree-tos --redirect --keep-until-expiring)
+  if [[ -n "$cert_email" ]]; then
+    certbot_args+=(--email "$cert_email")
+  else
+    certbot_args+=(--register-unsafely-without-email)
+  fi
+
+  echo "Aktifkan HTTPS Let's Encrypt untuk ${DOMAIN}..."
+  if sudo certbot "${certbot_args[@]}"; then
+    HTTPS_URL="https://${DOMAIN}/"
+    sudo nginx -t
+    sudo systemctl reload nginx
+  else
+    echo "Error: gagal membuat sertifikat HTTPS. Pastikan DNS domain sudah mengarah ke IP VPS dan port 80/443 terbuka."
+    exit 1
+  fi
+}
+
 if ! command -v pm2 >/dev/null 2>&1; then
   echo "pm2 belum ada, install global..."
   sudo npm install -g pm2
@@ -64,6 +135,8 @@ PORT=${APP_PORT}
 DOMAIN=${DOMAIN}
 API_KEY=${API_KEY_VALUE}
 NODE_ENV=production
+ENABLE_HTTPS=true
+LETSENCRYPT_EMAIL=
 SOIL_WET_PERCENT=70
 SOIL_DAMP_PERCENT=50
 COLD_TEMPERATURE=24
@@ -119,6 +192,8 @@ else
   }
 
   ensure_env_default "SOIL_WET_PERCENT" "70"
+  ensure_env_default "ENABLE_HTTPS" "true"
+  ensure_env_default "LETSENCRYPT_EMAIL" ""
   ensure_env_default "SOIL_DAMP_PERCENT" "50"
   ensure_env_default "COLD_TEMPERATURE" "24"
   ensure_env_default "VIBRATION_STRONG" "70"
@@ -165,11 +240,12 @@ sudo ln -sf "$NGINX_CONF" "$NGINX_LINK"
 
 sudo nginx -t
 sudo systemctl reload nginx
+enable_https
 
 echo "Deploy selesai"
 echo "Domain : ${DOMAIN}"
 echo "App dir: ${APP_DIR}"
 echo "Lihat API key di: ${ENV_FILE}"
-echo "Endpoint ingest ESP32 : http://${DOMAIN}/api/v1/readings"
-echo "Endpoint dashboard    : http://${DOMAIN}/"
+echo "Endpoint ingest ESP32 : ${HTTPS_URL%/}/api/v1/readings"
+echo "Endpoint dashboard    : ${HTTPS_URL}"
 echo "API key ESP32         : $(grep '^API_KEY=' "$ENV_FILE" | cut -d= -f2-)"

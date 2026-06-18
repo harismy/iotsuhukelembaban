@@ -34,7 +34,23 @@ Script akan otomatis:
 - menjalankan aplikasi dengan PM2
 - install atau memperbaiki Nginx jika belum tersedia
 - membuat reverse proxy Nginx ke aplikasi
+- mengaktifkan HTTPS Let's Encrypt jika `ENABLE_HTTPS=true`
 - menampilkan endpoint dan API key yang harus dipakai ESP32
+
+Sebelum mengaktifkan HTTPS, pastikan DNS domain sudah mengarah ke IP VPS dan firewall membuka port `80` serta `443`.
+
+Jika ingin memakai email untuk notifikasi sertifikat Let's Encrypt, isi di `.env` lalu jalankan ulang `start.sh`:
+
+```env
+ENABLE_HTTPS=true
+LETSENCRYPT_EMAIL=email-kamu@example.com
+```
+
+Untuk mematikan setup HTTPS otomatis:
+
+```env
+ENABLE_HTTPS=false
+```
 
 ## Auto install dari link
 
@@ -116,7 +132,7 @@ Ubah bagian berikut sebelum upload:
 ```cpp
 const char* WIFI_SSID = "NAMA_WIFI";
 const char* WIFI_PASSWORD = "PASSWORD_WIFI";
-const char* API_URL = "http://domain-anda.com/api/v1/readings";
+const char* API_URL = "https://domain-anda.com/api/v1/readings";
 const char* API_KEY = "isi_api_key_yang_sama_dengan_env";
 ```
 

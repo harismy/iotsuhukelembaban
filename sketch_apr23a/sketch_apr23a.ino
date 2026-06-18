@@ -1,4 +1,5 @@
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <DHT.h>
 
@@ -7,7 +8,7 @@ const char* WIFI_SSID = "NAMA_WIFI";
 const char* WIFI_PASSWORD = "PASSWORD_WIFI";
 
 // Ganti sesuai output start.sh di VPS.
-const char* API_URL = "http://domain-anda.com/api/v1/readings";
+const char* API_URL = "https://domain-anda.com/api/v1/readings";
 const char* API_KEY = "isi_api_key_yang_sama_dengan_env";
 
 // Pin alat sesuai laporan UAS.
@@ -32,6 +33,7 @@ const int VIBRATION_MAX_RAW = 12;
 const unsigned long SEND_INTERVAL_MS = 5000;
 const unsigned long VIBRATION_SAMPLE_MS = 800;
 unsigned long lastSentAt = 0;
+WiFiClientSecure secureClient;
 
 int clampInt(int value, int minValue, int maxValue) {
   if (value < minValue) return minValue;
@@ -105,7 +107,11 @@ bool postReading(
   float humidity
 ) {
   HTTPClient http;
-  http.begin(API_URL);
+  if (String(API_URL).startsWith("https://")) {
+    http.begin(secureClient, API_URL);
+  } else {
+    http.begin(API_URL);
+  }
   http.addHeader("Content-Type", "application/json");
   http.addHeader("x-api-key", API_KEY);
 
@@ -154,6 +160,7 @@ void setup() {
     dht.begin();
   }
 
+  secureClient.setInsecure();
   connectWiFi();
 }
 
