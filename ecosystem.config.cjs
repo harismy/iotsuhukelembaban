@@ -1,7 +1,7 @@
 ﻿module.exports = {
   apps: [
     {
-      name: 'esp32-monitor',
+      name: 'esp32-longsor-monitor',
       script: './server.js',
       cwd: __dirname,
       exec_mode: 'fork',

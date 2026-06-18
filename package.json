@@ -1,8 +1,8 @@
 ﻿{
-  "name": "esp32-temp-humidity-monitor",
+  "name": "esp32-landslide-monitor",
   "version": "1.0.0",
   "private": true,
-  "description": "Dashboard monitoring suhu dan kelembaban terintegrasi ESP32",
+  "description": "Dashboard pendeteksi dini potensi tanah longsor berbasis ESP32",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

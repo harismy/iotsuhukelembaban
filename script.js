@@ -1,17 +1,37 @@
-﻿const DATA_ENDPOINT = '/api/v1/latest';
+const DATA_ENDPOINT = '/api/v1/latest';
 
-const tempElem = document.getElementById('temperatureValue');
-const humElem = document.getElementById('humidityValue');
-const tempNeedle = document.getElementById('tempNeedle');
-const humNeedle = document.getElementById('humNeedle');
-const tempArc = document.getElementById('tempArc');
-const humArc = document.getElementById('humArc');
-
-const lastUpdateElem = document.getElementById('sensorLastUpdate');
-const statusDot = document.getElementById('statusDot');
-const statusText = document.getElementById('statusText');
-const refreshBtn = document.getElementById('refreshBtn');
-const realtimeClock = document.getElementById('realtimeClock');
+const elements = {
+  statusDot: document.getElementById('statusDot'),
+  statusText: document.getElementById('statusText'),
+  realtimeClock: document.getElementById('realtimeClock'),
+  riskPanel: document.getElementById('riskPanel'),
+  riskLevel: document.getElementById('riskLevel'),
+  riskMessage: document.getElementById('riskMessage'),
+  buzzerState: document.getElementById('buzzerState'),
+  soilValue: document.getElementById('soilValue'),
+  soilStatus: document.getElementById('soilStatus'),
+  soilNote: document.getElementById('soilNote'),
+  soilNeedle: document.getElementById('soilNeedle'),
+  soilArc: document.getElementById('soilArc'),
+  soilRawValue: document.getElementById('soilRawValue'),
+  soilCalibratedValue: document.getElementById('soilCalibratedValue'),
+  soilCalibrationRange: document.getElementById('soilCalibrationRange'),
+  vibrationValue: document.getElementById('vibrationValue'),
+  vibrationStatus: document.getElementById('vibrationStatus'),
+  vibrationNote: document.getElementById('vibrationNote'),
+  vibrationNeedle: document.getElementById('vibrationNeedle'),
+  vibrationArc: document.getElementById('vibrationArc'),
+  vibrationRawValue: document.getElementById('vibrationRawValue'),
+  vibrationCalibratedValue: document.getElementById('vibrationCalibratedValue'),
+  vibrationCalibrationRange: document.getElementById('vibrationCalibrationRange'),
+  temperatureValue: document.getElementById('temperatureValue'),
+  humidityValue: document.getElementById('humidityValue'),
+  temperatureStatus: document.getElementById('temperatureStatus'),
+  temperatureNote: document.getElementById('temperatureNote'),
+  deviceId: document.getElementById('deviceId'),
+  sensorLastUpdate: document.getElementById('sensorLastUpdate'),
+  refreshBtn: document.getElementById('refreshBtn'),
+};
 
 let isFetching = false;
 let autoRefreshInterval = null;
@@ -19,17 +39,42 @@ let clockInterval = null;
 let animationFrame = null;
 
 const gaugeConfig = {
-  temperature: { min: 0, max: 50, valueElem: tempElem, needleElem: tempNeedle, arcElem: tempArc },
-  humidity: { min: 0, max: 100, valueElem: humElem, needleElem: humNeedle, arcElem: humArc },
+  soil: {
+    min: 0,
+    max: 100,
+    valueElem: elements.soilValue,
+    needleElem: elements.soilNeedle,
+    arcElem: elements.soilArc,
+  },
+  vibration: {
+    min: 0,
+    max: 100,
+    valueElem: elements.vibrationValue,
+    needleElem: elements.vibrationNeedle,
+    arcElem: elements.vibrationArc,
+  },
 };
 
 const gaugeState = {
-  temperature: { current: 0, target: 0, initialized: false },
-  humidity: { current: 0, target: 0, initialized: false },
+  soil: { current: 0, target: 0, initialized: false },
+  vibration: { current: 0, target: 0, initialized: false },
 };
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
+}
+
+function optionalNumber(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function formatOptionalNumber(value, digits = 0) {
+  return value === null ? '--' : value.toFixed(digits);
 }
 
 function getCurrentTimeString(date = new Date()) {
@@ -41,18 +86,12 @@ function getCurrentTimeString(date = new Date()) {
 }
 
 function updateConnectionUI(isOnline, errorMsg = '') {
-  if (isOnline) {
-    statusDot.className = 'status-dot online';
-    statusText.innerText = 'Tersambung (realtime)';
-    return;
-  }
-
-  statusDot.className = 'status-dot offline';
-  statusText.innerText = errorMsg || 'Gagal terhubung';
+  elements.statusDot.className = `status-dot ${isOnline ? 'online' : 'offline'}`;
+  elements.statusText.innerText = isOnline ? 'Tersambung realtime' : errorMsg || 'Gagal terhubung';
 }
 
 function updateClock() {
-  realtimeClock.innerText = getCurrentTimeString();
+  elements.realtimeClock.innerText = getCurrentTimeString();
 }
 
 function renderGauge(name, value) {
@@ -60,7 +99,7 @@ function renderGauge(name, value) {
   const normalized = clamp((value - config.min) / (config.max - config.min), 0, 1);
   const angle = -120 + normalized * 240;
 
-  config.valueElem.innerText = value.toFixed(1);
+  config.valueElem.innerText = value.toFixed(0);
   config.needleElem.style.transform = `rotate(${angle.toFixed(2)}deg)`;
   config.arcElem.style.strokeDashoffset = (100 - normalized * 100).toFixed(2);
 }
@@ -75,23 +114,104 @@ function setGaugeTarget(name, value) {
 }
 
 function animationLoop() {
-  for (const key of Object.keys(gaugeState)) {
+  Object.keys(gaugeState).forEach((key) => {
     const state = gaugeState[key];
     if (!state.initialized) {
-      continue;
+      return;
     }
 
     const diff = state.target - state.current;
-    if (Math.abs(diff) > 0.01) {
-      state.current += diff * 0.08;
-    } else {
-      state.current = state.target;
-    }
-
+    state.current = Math.abs(diff) > 0.01 ? state.current + diff * 0.08 : state.target;
     renderGauge(key, state.current);
-  }
+  });
 
   animationFrame = requestAnimationFrame(animationLoop);
+}
+
+function getSoilStatus(value) {
+  if (value >= 70) {
+    return { label: 'Basah', note: 'Tanah sangat lembap, risiko meningkat saat ada getaran.' };
+  }
+  if (value >= 50) {
+    return { label: 'Lembap', note: 'Tanah mulai jenuh air, perlu dipantau.' };
+  }
+  return { label: 'Normal', note: 'Kelembapan tanah masih rendah.' };
+}
+
+function getVibrationStatus(value, active) {
+  if (value >= 70) {
+    return { label: 'Kuat', note: 'Pergeseran kuat terdeteksi. Buzzer harus aktif.' };
+  }
+  if (active || value >= 35) {
+    return { label: 'Aktif', note: 'Ada getaran atau pergeseran tanah.' };
+  }
+  return { label: 'Tenang', note: 'Tidak ada getaran berarti dari SW-420.' };
+}
+
+function getTemperatureStatus(value) {
+  if (!Number.isFinite(value)) {
+    return { label: 'Opsional', note: 'Sensor suhu belum mengirim data.' };
+  }
+  if (value <= 24) {
+    return { label: 'Dingin', note: 'Suhu dingin memperkuat indikasi saat tanah lembap.' };
+  }
+  return { label: 'Normal', note: 'Suhu sekitar belum masuk kondisi dingin.' };
+}
+
+function applyRiskClass(riskLevel) {
+  const normalized = String(riskLevel || '').toLowerCase();
+  elements.riskPanel.className = `risk-panel ${normalized}`;
+}
+
+function renderSensorData(data) {
+  const soilMoisture = optionalNumber(data.soilMoisture);
+  const soilRaw = optionalNumber(data.soilRaw);
+  const vibrationLevel = optionalNumber(data.vibrationLevel) || 0;
+  const vibrationRaw = optionalNumber(data.vibrationRaw);
+  const temperature = optionalNumber(data.temperature);
+  const humidity = optionalNumber(data.humidity);
+  const thresholds = data.thresholds || {};
+  const soilDryRaw = optionalNumber(thresholds.soilDryRaw);
+  const soilWetRaw = optionalNumber(thresholds.soilWetRaw);
+  const vibrationMaxRaw = optionalNumber(thresholds.vibrationMaxRaw);
+
+  if (soilMoisture === null) {
+    throw new Error('Nilai kelembapan tanah tidak valid');
+  }
+
+  setGaugeTarget('soil', clamp(soilMoisture, 0, 100));
+  setGaugeTarget('vibration', clamp(vibrationLevel, 0, 100));
+
+  const soilStatus = getSoilStatus(soilMoisture);
+  const vibrationStatus = getVibrationStatus(vibrationLevel, Boolean(data.vibration));
+  const temperatureStatus = getTemperatureStatus(temperature);
+
+  elements.soilStatus.innerText = soilStatus.label;
+  elements.soilNote.innerText = soilStatus.note;
+  elements.vibrationStatus.innerText = vibrationStatus.label;
+  elements.vibrationNote.innerText = vibrationStatus.note;
+  elements.temperatureStatus.innerText = temperatureStatus.label;
+  elements.temperatureNote.innerText = temperatureStatus.note;
+  elements.soilRawValue.innerText = formatOptionalNumber(soilRaw);
+  elements.soilCalibratedValue.innerText = formatOptionalNumber(soilMoisture);
+  elements.vibrationRawValue.innerText = formatOptionalNumber(vibrationRaw);
+  elements.vibrationCalibratedValue.innerText = formatOptionalNumber(vibrationLevel);
+  elements.soilCalibrationRange.innerText = `Kalibrasi: kering ${formatOptionalNumber(soilDryRaw)} ADC, basah ${formatOptionalNumber(soilWetRaw)} ADC`;
+  elements.vibrationCalibrationRange.innerText = `Kalibrasi: max ${formatOptionalNumber(vibrationMaxRaw)} pulsa`;
+  elements.temperatureValue.innerText = temperature !== null ? temperature.toFixed(1) : '--';
+  elements.humidityValue.innerText = humidity !== null ? humidity.toFixed(1) : '--';
+
+  elements.riskLevel.innerText = data.riskLevel || 'UNKNOWN';
+  elements.riskMessage.innerText = data.statusMessage || 'Data sensor diterima.';
+  elements.buzzerState.innerText = `Buzzer: ${data.buzzer ? 'NYALA' : 'MATI'}`;
+  elements.deviceId.innerText = data.deviceId || 'esp32-longsor';
+  applyRiskClass(data.riskLevel);
+
+  if (data.receivedAt) {
+    elements.sensorLastUpdate.innerText = getCurrentTimeString(new Date(data.receivedAt));
+  } else {
+    elements.sensorLastUpdate.innerText = getCurrentTimeString();
+  }
 }
 
 async function fetchSensorData() {
@@ -117,24 +237,7 @@ async function fetchSensorData() {
     }
 
     const payload = await response.json();
-    const data = payload.data || {};
-    const temperature = Number(data.temperature);
-    const humidity = Number(data.humidity);
-
-    if (!Number.isFinite(temperature) || !Number.isFinite(humidity)) {
-      throw new Error('Nilai sensor tidak valid');
-    }
-
-    setGaugeTarget('temperature', temperature);
-    setGaugeTarget('humidity', humidity);
-
-    if (data.receivedAt) {
-      const receivedDate = new Date(data.receivedAt);
-      lastUpdateElem.innerText = getCurrentTimeString(receivedDate);
-    } else {
-      lastUpdateElem.innerText = getCurrentTimeString();
-    }
-
+    renderSensorData(payload.data || {});
     updateConnectionUI(true);
   } catch (error) {
     let errorMessage = 'Gagal ambil data';
@@ -147,7 +250,11 @@ async function fetchSensorData() {
     }
 
     updateConnectionUI(false, errorMessage);
-    lastUpdateElem.innerText = `${getCurrentTimeString()} (gagal)`;
+    elements.sensorLastUpdate.innerText = `${getCurrentTimeString()} (gagal)`;
+    elements.riskLevel.innerText = 'OFFLINE';
+    elements.riskMessage.innerText = errorMessage;
+    elements.buzzerState.innerText = 'Buzzer: --';
+    applyRiskClass('unknown');
   } finally {
     isFetching = false;
   }
@@ -155,9 +262,9 @@ async function fetchSensorData() {
 
 function manualRefresh() {
   fetchSensorData();
-  refreshBtn.style.transform = 'scale(0.96)';
+  elements.refreshBtn.style.transform = 'scale(0.96)';
   setTimeout(() => {
-    refreshBtn.style.transform = '';
+    elements.refreshBtn.style.transform = '';
   }, 150);
 }
 
@@ -181,7 +288,7 @@ window.addEventListener('DOMContentLoaded', () => {
   animationFrame = requestAnimationFrame(animationLoop);
   fetchSensorData();
   startAutoRefresh();
-  refreshBtn.addEventListener('click', manualRefresh);
+  elements.refreshBtn.addEventListener('click', manualRefresh);
 });
 
 window.addEventListener('beforeunload', () => {

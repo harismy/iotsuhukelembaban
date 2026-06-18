@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_NAME="esp32-monitor"
+APP_NAME="esp32-longsor-monitor"
 DEFAULT_PORT="3000"
 REQUESTED_PORT="${3:-${PORT:-}}"
 DOMAIN="${1:-${DOMAIN:-}}"
@@ -64,11 +64,24 @@ PORT=${APP_PORT}
 DOMAIN=${DOMAIN}
 API_KEY=${API_KEY_VALUE}
 NODE_ENV=production
+SOIL_WET_PERCENT=70
+SOIL_DAMP_PERCENT=50
+COLD_TEMPERATURE=24
+VIBRATION_STRONG=70
+VIBRATION_MEDIUM=35
+VIBRATION_MAX_RAW=12
+SOIL_DRY_RAW=3200
+SOIL_WET_RAW=1200
 EOF
   echo ".env dibuat otomatis"
 else
-  source "$ENV_FILE"
-  APP_PORT="${REQUESTED_PORT:-${PORT:-$DEFAULT_PORT}}"
+  get_env_value() {
+    local key="$1"
+    grep -m1 "^${key}=" "$ENV_FILE" | cut -d= -f2- || true
+  }
+
+  EXISTING_PORT="$(get_env_value "PORT")"
+  APP_PORT="${REQUESTED_PORT:-${EXISTING_PORT:-$DEFAULT_PORT}}"
 
   if ! grep -q '^DOMAIN=' "$ENV_FILE"; then
     echo "DOMAIN=${DOMAIN}" >> "$ENV_FILE"
@@ -89,13 +102,30 @@ else
       echo "API_KEY=${INPUT_API_KEY}" >> "$ENV_FILE"
     fi
   else
-    EXISTING_API_KEY="${API_KEY:-}"
+    EXISTING_API_KEY="$(get_env_value "API_KEY")"
     if [[ -z "$EXISTING_API_KEY" ]]; then
       NEW_KEY="$(openssl rand -hex 32)"
       echo "API_KEY=${NEW_KEY}" >> "$ENV_FILE"
       echo "API key ditambahkan ke .env"
     fi
   fi
+
+  ensure_env_default() {
+    local key="$1"
+    local value="$2"
+    if ! grep -q "^${key}=" "$ENV_FILE"; then
+      echo "${key}=${value}" >> "$ENV_FILE"
+    fi
+  }
+
+  ensure_env_default "SOIL_WET_PERCENT" "70"
+  ensure_env_default "SOIL_DAMP_PERCENT" "50"
+  ensure_env_default "COLD_TEMPERATURE" "24"
+  ensure_env_default "VIBRATION_STRONG" "70"
+  ensure_env_default "VIBRATION_MEDIUM" "35"
+  ensure_env_default "VIBRATION_MAX_RAW" "12"
+  ensure_env_default "SOIL_DRY_RAW" "3200"
+  ensure_env_default "SOIL_WET_RAW" "1200"
 fi
 
 echo "Install dependency node..."
@@ -140,5 +170,6 @@ echo "Deploy selesai"
 echo "Domain : ${DOMAIN}"
 echo "App dir: ${APP_DIR}"
 echo "Lihat API key di: ${ENV_FILE}"
-echo "Endpoint ingest ESP32: http://${DOMAIN}/api/v1/readings"
-echo "Endpoint dashboard   : http://${DOMAIN}/"
+echo "Endpoint ingest ESP32 : http://${DOMAIN}/api/v1/readings"
+echo "Endpoint dashboard    : http://${DOMAIN}/"
+echo "API key ESP32         : $(grep '^API_KEY=' "$ENV_FILE" | cut -d= -f2-)"

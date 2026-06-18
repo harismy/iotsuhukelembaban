@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO_URL="https://github.com/harismy/iotsuhukelembaban.git"
-APP_DIR="${APP_DIR:-/opt/iotsuhukelembaban}"
+APP_DIR="${APP_DIR:-/opt/iot-longsor-esp32}"
 DOMAIN="${1:-}"
 INPUT_API_KEY="${2:-}"
 INPUT_PORT="${3:-}"
@@ -12,11 +12,11 @@ if [[ -z "$DOMAIN" ]]; then
 fi
 
 if [[ -z "$INPUT_API_KEY" ]]; then
-  read -r -p "Masukkan API key untuk ESP32: " INPUT_API_KEY
+  read -r -p "Masukkan API key untuk ESP32 (kosongkan untuk generate otomatis): " INPUT_API_KEY
 fi
 
-if [[ -z "$DOMAIN" || -z "$INPUT_API_KEY" ]]; then
-  echo "Domain dan API key wajib diisi."
+if [[ -z "$DOMAIN" ]]; then
+  echo "Domain wajib diisi."
   exit 1
 fi
 

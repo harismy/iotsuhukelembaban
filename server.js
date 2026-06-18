@@ -1,4 +1,4 @@
-﻿const fs = require('fs');
+const fs = require('fs');
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
@@ -12,14 +12,35 @@ const port = Number(process.env.PORT || 3000);
 const apiKey = process.env.API_KEY;
 const dataFile = path.join(__dirname, 'data', 'latest-reading.json');
 
+const thresholds = {
+  soilWetPercent: Number(process.env.SOIL_WET_PERCENT || 70),
+  soilDampPercent: Number(process.env.SOIL_DAMP_PERCENT || 50),
+  coldTemperature: Number(process.env.COLD_TEMPERATURE || 24),
+  vibrationStrong: Number(process.env.VIBRATION_STRONG || 70),
+  vibrationMedium: Number(process.env.VIBRATION_MEDIUM || 35),
+  vibrationMaxRaw: Number(process.env.VIBRATION_MAX_RAW || 12),
+  soilDryRaw: Number(process.env.SOIL_DRY_RAW || 3200),
+  soilWetRaw: Number(process.env.SOIL_WET_RAW || 1200),
+};
+
 if (!apiKey) {
   console.error('API_KEY belum diset di .env');
   process.exit(1);
 }
 
 let latestReading = {
+  soilMoisture: null,
+  soilRaw: null,
+  soilMoistureDevice: null,
   temperature: null,
   humidity: null,
+  vibration: false,
+  vibrationRaw: null,
+  vibrationLevel: 0,
+  vibrationLevelDevice: null,
+  buzzer: false,
+  riskLevel: 'UNKNOWN',
+  statusMessage: 'Belum ada data sensor masuk',
   deviceId: 'unknown',
   receivedAt: null,
 };
@@ -31,6 +52,150 @@ function ensureDataDir() {
   }
 }
 
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function toFiniteNumber(value, fallback = null) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function toBoolean(value) {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'number') {
+    return value > 0;
+  }
+  if (typeof value === 'string') {
+    return ['1', 'true', 'yes', 'active', 'aktif', 'on'].includes(value.trim().toLowerCase());
+  }
+  return false;
+}
+
+function rawToSoilPercent(raw) {
+  const dry = thresholds.soilDryRaw;
+  const wet = thresholds.soilWetRaw;
+
+  if (dry === wet) {
+    return null;
+  }
+
+  const percent = ((dry - raw) / (dry - wet)) * 100;
+  return clamp(percent, 0, 100);
+}
+
+function rawToVibrationPercent(raw) {
+  if (thresholds.vibrationMaxRaw <= 0) {
+    return null;
+  }
+
+  return clamp((raw / thresholds.vibrationMaxRaw) * 100, 0, 100);
+}
+
+function pickFirstNumber(body, keys) {
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(body, key)) {
+      const value = toFiniteNumber(body[key]);
+      if (value !== null) {
+        return value;
+      }
+    }
+  }
+  return null;
+}
+
+function normalizeReading(body) {
+  const soilRaw = pickFirstNumber(body, ['soilRaw', 'soil_raw', 'soilAnalog', 'soil_analog']);
+  const soilMoistureDevice = pickFirstNumber(body, [
+    'soilMoisture',
+    'soil_moisture',
+    'soilMoisturePercent',
+    'soil_moisture_percent',
+    'soil',
+  ]);
+  let soilMoisture = soilRaw !== null ? rawToSoilPercent(soilRaw) : soilMoistureDevice;
+
+  if (soilMoisture !== null) {
+    soilMoisture = clamp(soilMoisture, 0, 100);
+  }
+
+  const temperature = pickFirstNumber(body, ['temperature', 'tempC', 'temp_c', 'suhu']);
+  const humidity = pickFirstNumber(body, ['humidity', 'airHumidity', 'air_humidity', 'kelembabanUdara']);
+  const vibrationRaw = pickFirstNumber(body, [
+    'vibrationRaw',
+    'vibration_raw',
+    'vibrationCount',
+    'vibration_count',
+    'vibrationPulses',
+    'vibration_pulses',
+  ]);
+  const vibrationLevelDevice = pickFirstNumber(body, ['vibrationLevel', 'vibration_level']);
+  const vibration = toBoolean(body.vibration ?? body.vibrationDetected ?? body.vibration_detected ?? vibrationRaw);
+  const vibrationLevelFromRaw = vibrationRaw !== null ? rawToVibrationPercent(vibrationRaw) : null;
+  const vibrationLevel = clamp(vibrationLevelFromRaw ?? vibrationLevelDevice ?? (vibration ? 100 : 0), 0, 100);
+
+  return {
+    soilMoisture,
+    soilRaw,
+    soilMoistureDevice,
+    temperature,
+    humidity,
+    vibration,
+    vibrationRaw,
+    vibrationLevel,
+    vibrationLevelDevice,
+    deviceId: String(body.deviceId || body.device || 'esp32-longsor'),
+  };
+}
+
+function evaluateRisk(reading) {
+  const soilWet = reading.soilMoisture !== null && reading.soilMoisture >= thresholds.soilWetPercent;
+  const soilDamp = reading.soilMoisture !== null && reading.soilMoisture >= thresholds.soilDampPercent;
+  const cold = reading.temperature !== null && reading.temperature <= thresholds.coldTemperature;
+  const strongMovement = reading.vibrationLevel >= thresholds.vibrationStrong;
+  const mediumMovement = reading.vibrationLevel >= thresholds.vibrationMedium || reading.vibration;
+
+  if (strongMovement) {
+    return {
+      buzzer: true,
+      riskLevel: 'BAHAYA',
+      statusMessage: 'Getaran/pergeseran tanah kuat terdeteksi. Buzzer aktif.',
+    };
+  }
+
+  if (soilWet && cold && mediumMovement) {
+    return {
+      buzzer: true,
+      riskLevel: 'BAHAYA',
+      statusMessage: 'Tanah lembap, suhu dingin, dan ada pergeseran. Potensi longsor tinggi.',
+    };
+  }
+
+  if (soilWet && mediumMovement) {
+    return {
+      buzzer: true,
+      riskLevel: 'BAHAYA',
+      statusMessage: 'Tanah basah dan getaran aktif. Potensi longsor tinggi.',
+    };
+  }
+
+  if (soilWet || (soilDamp && cold) || (soilDamp && mediumMovement)) {
+    return {
+      buzzer: false,
+      riskLevel: 'WASPADA',
+      statusMessage: 'Kondisi tanah mulai rawan. Pantau kelembapan dan pergeseran.',
+    };
+  }
+
+  return {
+    buzzer: false,
+    riskLevel: 'AMAN',
+    statusMessage: 'Kondisi sensor masih dalam batas aman.',
+  };
+}
+
 function loadLatestReading() {
   ensureDataDir();
   if (!fs.existsSync(dataFile)) {
@@ -39,17 +204,45 @@ function loadLatestReading() {
 
   try {
     const parsed = JSON.parse(fs.readFileSync(dataFile, 'utf8'));
-    if (
-      typeof parsed === 'object' &&
-      parsed !== null &&
-      Object.prototype.hasOwnProperty.call(parsed, 'temperature') &&
-      Object.prototype.hasOwnProperty.call(parsed, 'humidity')
-    ) {
+    if (typeof parsed === 'object' && parsed !== null) {
+      let loadedSoilMoisture = toFiniteNumber(parsed.soilMoisture);
+      const loadedSoilRaw = toFiniteNumber(parsed.soilRaw);
+
+      if (loadedSoilMoisture === null && loadedSoilRaw === null) {
+        return;
+      }
+
+      if (loadedSoilRaw !== null) {
+        loadedSoilMoisture = rawToSoilPercent(loadedSoilRaw);
+      }
+
+      const loadedVibrationRaw = toFiniteNumber(parsed.vibrationRaw);
+      const loadedVibrationLevel = loadedVibrationRaw !== null
+        ? rawToVibrationPercent(loadedVibrationRaw)
+        : toFiniteNumber(parsed.vibrationLevel, 0);
+
       latestReading = {
-        temperature: Number(parsed.temperature),
-        humidity: Number(parsed.humidity),
+        ...latestReading,
+        ...parsed,
+        soilMoisture: loadedSoilMoisture,
+        soilRaw: loadedSoilRaw,
+        soilMoistureDevice: toFiniteNumber(parsed.soilMoistureDevice),
+        temperature: toFiniteNumber(parsed.temperature),
+        humidity: toFiniteNumber(parsed.humidity),
+        vibration: Boolean(parsed.vibration),
+        vibrationRaw: loadedVibrationRaw,
+        vibrationLevel: loadedVibrationLevel,
+        vibrationLevelDevice: toFiniteNumber(parsed.vibrationLevelDevice),
+        buzzer: Boolean(parsed.buzzer),
+        riskLevel: parsed.riskLevel || 'UNKNOWN',
+        statusMessage: parsed.statusMessage || 'Belum ada data sensor masuk',
         deviceId: parsed.deviceId || 'unknown',
         receivedAt: parsed.receivedAt || null,
+      };
+      latestReading = {
+        ...latestReading,
+        ...evaluateRisk(latestReading),
+        thresholds,
       };
     }
   } catch (error) {
@@ -93,26 +286,24 @@ app.use(express.json({ limit: '64kb' }));
 app.use(express.static(__dirname));
 
 app.get('/health', (req, res) => {
-  res.json({ ok: true, service: 'esp32-monitor-api' });
+  res.json({ ok: true, service: 'esp32-landslide-monitor-api' });
 });
 
 app.post('/api/v1/readings', requireApiKey, (req, res) => {
-  const body = req.body || {};
-  const temperature = Number(body.temperature);
-  const humidity = Number(body.humidity);
-  const deviceId = String(body.deviceId || 'esp32');
+  const reading = normalizeReading(req.body || {});
 
-  if (!Number.isFinite(temperature) || !Number.isFinite(humidity)) {
+  if (reading.soilMoisture === null) {
     return res.status(400).json({
       ok: false,
-      message: 'Body wajib berisi number: temperature dan humidity',
+      message: 'Body wajib berisi soilMoisture/soilMoisturePercent atau soilRaw/soil_raw',
     });
   }
 
+  const risk = evaluateRisk(reading);
   latestReading = {
-    temperature,
-    humidity,
-    deviceId,
+    ...reading,
+    ...risk,
+    thresholds,
     receivedAt: new Date().toISOString(),
   };
 
@@ -146,12 +337,7 @@ app.get('/data', (req, res) => {
     });
   }
 
-  return res.json({
-    temperature: latestReading.temperature,
-    humidity: latestReading.humidity,
-    receivedAt: latestReading.receivedAt,
-    deviceId: latestReading.deviceId,
-  });
+  return res.json(latestReading);
 });
 
 app.get('*', (req, res) => {
