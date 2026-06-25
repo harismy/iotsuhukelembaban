@@ -80,6 +80,7 @@ Contoh request ESP32:
   "vibration": true,
   "vibrationRaw": 5,
   "vibrationLevel": 42,
+  "vibrationDurationMs": 3200,
   "temperature": 23.7,
   "humidity": 81.2
 }
@@ -101,6 +102,7 @@ COLD_TEMPERATURE=24
 VIBRATION_STRONG=70
 VIBRATION_MEDIUM=35
 VIBRATION_MAX_RAW=4
+VIBRATION_DANGER_DURATION_MS=3000
 SOIL_DRY_RAW=3200
 SOIL_WET_RAW=1200
 ```
@@ -115,6 +117,8 @@ Cara kalibrasi cepat:
 - Restart aplikasi dengan `pm2 restart esp32-longsor-monitor --update-env`.
 
 Untuk mengurangi delay tampilan, firmware membaca getaran lebih sering dan dashboard memakai realtime stream `/api/v1/events`. Jika sebelumnya `.env` di VPS masih memakai `VIBRATION_MAX_RAW=12`, ubah ke sekitar `4` dulu lalu kalibrasi ulang dari dashboard.
+
+Alarm buzzer tidak aktif dari getaran sesaat. Firmware dan backend memakai `VIBRATION_DANGER_DURATION_MS=3000`, jadi getaran harus berlangsung minimal 3 detik sebelum status menjadi `BAHAYA` dan buzzer menyala.
 
 Dashboard menampilkan dua nilai:
 - `Sebelum kalibrasi`: nilai mentah dari sensor, misalnya ADC tanah atau pulsa SW-420.

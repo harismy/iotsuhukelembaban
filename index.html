@@ -37,6 +37,25 @@
         <div class="buzzer-state" id="buzzerState">Buzzer: --</div>
       </section>
 
+      <section class="summary-grid" aria-label="Ringkasan mudah dibaca">
+        <div class="summary-item">
+          <span>Kondisi tanah</span>
+          <strong id="plainSoilSummary">--</strong>
+        </div>
+        <div class="summary-item">
+          <span>Getaran berlanjut</span>
+          <strong id="vibrationDurationValue">--</strong>
+        </div>
+        <div class="summary-item">
+          <span>Ambang alarm</span>
+          <strong id="vibrationThresholdValue">3.0 detik</strong>
+        </div>
+        <div class="summary-item">
+          <span>Saran tindakan</span>
+          <strong id="plainActionSummary">Menunggu data</strong>
+        </div>
+      </section>
+
       <section class="cards-grid" aria-label="Data sensor">
         <article class="sensor-card soil-card">
           <div class="card-header">
@@ -117,6 +136,23 @@
             <p class="sensor-note" id="temperatureNote">Suhu dipakai untuk memperkuat indikasi saat tanah lembap dan dingin.</p>
           </div>
         </article>
+      </section>
+
+      <section class="chart-panel" aria-label="Grafik realtime sensor">
+        <div class="chart-header">
+          <div>
+            <span class="panel-label">Grafik Realtime</span>
+            <h2>Perubahan Sensor 1 Menit Terakhir</h2>
+          </div>
+          <div class="chart-legend">
+            <span><i class="legend-soil"></i>Kelembapan tanah</span>
+            <span><i class="legend-vibration"></i>Getaran</span>
+            <span><i class="legend-duration"></i>Durasi getaran</span>
+          </div>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="sensorChart" width="960" height="320" aria-label="Chart realtime kelembapan tanah, getaran, dan durasi getaran"></canvas>
+        </div>
       </section>
 
       <section class="details-strip">

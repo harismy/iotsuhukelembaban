@@ -33,10 +33,14 @@ const int VIBRATION_MAX_RAW = 4;
 const unsigned long TELEMETRY_INTERVAL_MS = 1000;
 const unsigned long MIN_EVENT_SEND_GAP_MS = 250;
 const unsigned long VIBRATION_SAMPLE_MS = 160;
+const unsigned long VIBRATION_CONFIRM_MS = 3000;
+const unsigned long VIBRATION_RESET_GRACE_MS = 450;
 const unsigned long BUZZER_HOLD_MS = 6000;
 const unsigned long DHT_INTERVAL_MS = 2500;
 unsigned long lastSentAt = 0;
 unsigned long buzzerHoldUntil = 0;
+unsigned long vibrationStartedAt = 0;
+unsigned long lastVibrationSeenAt = 0;
 unsigned long lastDhtReadMs = 0;
 bool lastSentBuzzer = false;
 bool lastSentDanger = false;
@@ -113,6 +117,7 @@ bool postReading(
   bool vibration,
   int vibrationLevel,
   int vibrationRaw,
+  unsigned long vibrationDurationMs,
   bool buzzer,
   float temperature,
   float humidity
@@ -133,6 +138,7 @@ bool postReading(
   payload += "\"vibration\":" + String(vibration ? "true" : "false") + ",";
   payload += "\"vibrationRaw\":" + String(vibrationRaw) + ",";
   payload += "\"vibrationLevel\":" + String(vibrationLevel) + ",";
+  payload += "\"vibrationDurationMs\":" + String(vibrationDurationMs) + ",";
   payload += "\"buzzer\":" + String(buzzer ? "true" : "false");
 
   if (!isnan(temperature)) {
@@ -202,8 +208,20 @@ void loop() {
   float humidity = lastHumidity;
   bool cold = !isnan(temperature) && temperature <= 24.0;
   bool wetSoil = soilMoisture >= 70;
-  bool strongMovement = vibrationLevel >= 70;
-  bool danger = strongMovement || (wetSoil && vibration) || (wetSoil && cold && vibration);
+  bool vibrationPresent = vibration || vibrationLevel >= 25;
+
+  if (vibrationPresent) {
+    lastVibrationSeenAt = now;
+    if (vibrationStartedAt == 0) {
+      vibrationStartedAt = now;
+    }
+  } else if (vibrationStartedAt != 0 && now - lastVibrationSeenAt > VIBRATION_RESET_GRACE_MS) {
+    vibrationStartedAt = 0;
+  }
+
+  unsigned long vibrationDurationMs = vibrationStartedAt == 0 ? 0 : now - vibrationStartedAt;
+  bool vibrationConfirmed = vibrationDurationMs >= VIBRATION_CONFIRM_MS;
+  bool danger = vibrationConfirmed;
 
   if (danger) {
     buzzerHoldUntil = now + BUZZER_HOLD_MS;
@@ -225,7 +243,7 @@ void loop() {
     return;
   }
 
-  bool sent = postReading(soilRaw, soilMoisture, vibration, vibrationLevel, vibrationRaw, buzzer, temperature, humidity);
+  bool sent = postReading(soilRaw, soilMoisture, vibration, vibrationLevel, vibrationRaw, vibrationDurationMs, buzzer, temperature, humidity);
   lastSentAt = millis();
   lastSentBuzzer = buzzer;
   lastSentDanger = danger;

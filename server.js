@@ -19,7 +19,8 @@ const thresholds = {
   coldTemperature: Number(process.env.COLD_TEMPERATURE || 24),
   vibrationStrong: Number(process.env.VIBRATION_STRONG || 70),
   vibrationMedium: Number(process.env.VIBRATION_MEDIUM || 35),
-  vibrationMaxRaw: Number(process.env.VIBRATION_MAX_RAW || 12),
+  vibrationMaxRaw: Number(process.env.VIBRATION_MAX_RAW || 4),
+  vibrationDangerDurationMs: Number(process.env.VIBRATION_DANGER_DURATION_MS || 3000),
   soilDryRaw: Number(process.env.SOIL_DRY_RAW || 3200),
   soilWetRaw: Number(process.env.SOIL_WET_RAW || 1200),
 };
@@ -39,6 +40,8 @@ let latestReading = {
   vibrationRaw: null,
   vibrationLevel: 0,
   vibrationLevelDevice: null,
+  vibrationDurationMs: 0,
+  vibrationConfirmed: false,
   buzzer: false,
   riskLevel: 'UNKNOWN',
   statusMessage: 'Belum ada data sensor masuk',
@@ -136,6 +139,14 @@ function normalizeReading(body) {
   const vibration = toBoolean(body.vibration ?? body.vibrationDetected ?? body.vibration_detected ?? vibrationRaw);
   const vibrationLevelFromRaw = vibrationRaw !== null ? rawToVibrationPercent(vibrationRaw) : null;
   const vibrationLevel = clamp(vibrationLevelFromRaw ?? vibrationLevelDevice ?? (vibration ? 100 : 0), 0, 100);
+  const buzzerDevice = toBoolean(body.buzzer ?? body.buzzerActive ?? body.buzzer_active);
+  const vibrationDurationMs = pickFirstNumber(body, [
+    'vibrationDurationMs',
+    'vibration_duration_ms',
+    'movementDurationMs',
+    'movement_duration_ms',
+  ]) ?? 0;
+  const vibrationConfirmed = vibrationDurationMs >= thresholds.vibrationDangerDurationMs;
 
   return {
     soilMoisture,
@@ -147,6 +158,9 @@ function normalizeReading(body) {
     vibrationRaw,
     vibrationLevel,
     vibrationLevelDevice,
+    buzzerDevice,
+    vibrationDurationMs,
+    vibrationConfirmed,
     deviceId: String(body.deviceId || body.device || 'esp32-longsor'),
   };
 }
@@ -157,36 +171,41 @@ function evaluateRisk(reading) {
   const cold = reading.temperature !== null && reading.temperature <= thresholds.coldTemperature;
   const strongMovement = reading.vibrationLevel >= thresholds.vibrationStrong;
   const mediumMovement = reading.vibrationLevel >= thresholds.vibrationMedium || reading.vibration;
+  const vibrationDurationMs = Number(reading.vibrationDurationMs || 0);
+  const vibrationSeconds = (vibrationDurationMs / 1000).toFixed(1);
+  const confirmedMovement = mediumMovement && vibrationDurationMs >= thresholds.vibrationDangerDurationMs;
 
-  if (strongMovement) {
+  if (reading.buzzerDevice) {
     return {
       buzzer: true,
       riskLevel: 'BAHAYA',
-      statusMessage: 'Getaran/pergeseran tanah kuat terdeteksi. Buzzer aktif.',
+      statusMessage: vibrationDurationMs > 0
+        ? `Getaran tanah berlangsung ${vibrationSeconds} detik. Buzzer aktif.`
+        : 'Buzzer masih aktif setelah getaran berbahaya terkonfirmasi.',
     };
   }
 
-  if (soilWet && cold && mediumMovement) {
+  if (confirmedMovement) {
     return {
       buzzer: true,
       riskLevel: 'BAHAYA',
-      statusMessage: 'Tanah lembap, suhu dingin, dan ada pergeseran. Potensi longsor tinggi.',
+      statusMessage: `Getaran tanah berlangsung ${vibrationSeconds} detik. Buzzer aktif.`,
     };
   }
 
-  if (soilWet && mediumMovement) {
+  if (mediumMovement) {
     return {
-      buzzer: true,
-      riskLevel: 'BAHAYA',
-      statusMessage: 'Tanah basah dan getaran aktif. Potensi longsor tinggi.',
+      buzzer: false,
+      riskLevel: soilWet || strongMovement ? 'WASPADA' : 'AMAN',
+      statusMessage: `Getaran terdeteksi ${vibrationSeconds} detik. Buzzer baru aktif jika getaran berlanjut minimal 3 detik.`,
     };
   }
 
-  if (soilWet || (soilDamp && cold) || (soilDamp && mediumMovement)) {
+  if (soilWet || (soilDamp && cold)) {
     return {
       buzzer: false,
       riskLevel: 'WASPADA',
-      statusMessage: 'Kondisi tanah mulai rawan. Pantau kelembapan dan pergeseran.',
+      statusMessage: 'Tanah lembap/basah. Pantau jika muncul getaran yang berlangsung lama.',
     };
   }
 
@@ -234,6 +253,9 @@ function loadLatestReading() {
         vibrationRaw: loadedVibrationRaw,
         vibrationLevel: loadedVibrationLevel,
         vibrationLevelDevice: toFiniteNumber(parsed.vibrationLevelDevice),
+        buzzerDevice: Boolean(parsed.buzzerDevice ?? parsed.buzzer),
+        vibrationDurationMs: toFiniteNumber(parsed.vibrationDurationMs, 0),
+        vibrationConfirmed: toFiniteNumber(parsed.vibrationDurationMs, 0) >= thresholds.vibrationDangerDurationMs,
         buzzer: Boolean(parsed.buzzer),
         riskLevel: parsed.riskLevel || 'UNKNOWN',
         statusMessage: parsed.statusMessage || 'Belum ada data sensor masuk',
