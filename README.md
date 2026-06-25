@@ -66,6 +66,7 @@ Jika key dikosongkan pada mode clone manual, `start.sh` akan membuat key sendiri
 
 - `POST /api/v1/readings` butuh header `x-api-key`
 - `GET /api/v1/latest` untuk dashboard
+- `GET /api/v1/events` realtime stream untuk dashboard
 - `GET /data` kompatibilitas endpoint lama
 - `GET /health`
 
@@ -99,7 +100,7 @@ SOIL_DAMP_PERCENT=50
 COLD_TEMPERATURE=24
 VIBRATION_STRONG=70
 VIBRATION_MEDIUM=35
-VIBRATION_MAX_RAW=12
+VIBRATION_MAX_RAW=4
 SOIL_DRY_RAW=3200
 SOIL_WET_RAW=1200
 ```
@@ -112,6 +113,8 @@ Cara kalibrasi cepat:
 - Saat sensor di tanah basah/jenuh air, catat nilai ADC dan masukkan ke `SOIL_WET_RAW`.
 - Guncangkan sensor SW-420 sekuat skenario bahaya, catat nilai pulsa terbesar, lalu masukkan ke `VIBRATION_MAX_RAW`.
 - Restart aplikasi dengan `pm2 restart esp32-longsor-monitor --update-env`.
+
+Untuk mengurangi delay tampilan, firmware membaca getaran lebih sering dan dashboard memakai realtime stream `/api/v1/events`. Jika sebelumnya `.env` di VPS masih memakai `VIBRATION_MAX_RAW=12`, ubah ke sekitar `4` dulu lalu kalibrasi ulang dari dashboard.
 
 Dashboard menampilkan dua nilai:
 - `Sebelum kalibrasi`: nilai mentah dari sensor, misalnya ADC tanah atau pulsa SW-420.

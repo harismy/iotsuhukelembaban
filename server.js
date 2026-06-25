@@ -11,6 +11,7 @@ const app = express();
 const port = Number(process.env.PORT || 3000);
 const apiKey = process.env.API_KEY;
 const dataFile = path.join(__dirname, 'data', 'latest-reading.json');
+const sseClients = new Set();
 
 const thresholds = {
   soilWetPercent: Number(process.env.SOIL_WET_PERCENT || 70),
@@ -255,6 +256,17 @@ function saveLatestReading() {
   fs.writeFileSync(dataFile, JSON.stringify(latestReading, null, 2), 'utf8');
 }
 
+function broadcastLatestReading() {
+  if (!latestReading.receivedAt) {
+    return;
+  }
+
+  const payload = `data: ${JSON.stringify({ ok: true, data: latestReading })}\n\n`;
+  for (const client of sseClients) {
+    client.write(payload);
+  }
+}
+
 function extractApiKey(req) {
   const headerKey = req.get('x-api-key');
   if (headerKey) {
@@ -316,6 +328,7 @@ app.post('/api/v1/readings', requireApiKey, (req, res) => {
     });
   }
 
+  broadcastLatestReading();
   return res.status(201).json({ ok: true, data: latestReading });
 });
 
@@ -328,6 +341,29 @@ app.get('/api/v1/latest', (req, res) => {
   }
 
   return res.json({ ok: true, data: latestReading });
+});
+
+app.get('/api/v1/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  sseClients.add(res);
+  res.write(': connected\n\n');
+
+  if (latestReading.receivedAt) {
+    res.write(`data: ${JSON.stringify({ ok: true, data: latestReading })}\n\n`);
+  }
+
+  const keepAlive = setInterval(() => {
+    res.write(': keep-alive\n\n');
+  }, 25000);
+
+  req.on('close', () => {
+    clearInterval(keepAlive);
+    sseClients.delete(res);
+  });
 });
 
 app.get('/data', (req, res) => {

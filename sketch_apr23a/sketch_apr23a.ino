@@ -4,12 +4,12 @@
 #include <DHT.h>
 
 // Ganti sesuai WiFi.
-const char* WIFI_SSID = "NAMA_WIFI";
-const char* WIFI_PASSWORD = "PASSWORD_WIFI";
+const char* WIFI_SSID = "TECNO POVA 7 5G";
+const char* WIFI_PASSWORD = "201219[]Mycan";
 
 // Ganti sesuai output start.sh di VPS.
-const char* API_URL = "https://domain-anda.com/api/v1/readings";
-const char* API_KEY = "isi_api_key_yang_sama_dengan_env";
+const char* API_URL = "https://silong.iotukri.online/api/v1/readings";
+const char* API_KEY = "vdhfehr7387ggjjhjdvdhhfjb00283267562eyghdsxbjhcgd627839483uywfgdvshcjdty12t734i3rwejhdbslkjou987r43uyesdihgctycghvjey3f6y4u3ig4ewgudsyt";
 
 // Pin alat sesuai laporan UAS.
 #define SOIL_PIN 34
@@ -28,11 +28,22 @@ const int SOIL_WET_RAW = 1200;
 
 // Banyak modul SW-420 bernilai HIGH saat getaran aktif.
 const int VIBRATION_ACTIVE_STATE = HIGH;
-const int VIBRATION_MAX_RAW = 12;
+const int VIBRATION_MAX_RAW = 4;
 
-const unsigned long SEND_INTERVAL_MS = 5000;
-const unsigned long VIBRATION_SAMPLE_MS = 800;
+const unsigned long TELEMETRY_INTERVAL_MS = 1000;
+const unsigned long MIN_EVENT_SEND_GAP_MS = 250;
+const unsigned long VIBRATION_SAMPLE_MS = 160;
+const unsigned long BUZZER_HOLD_MS = 6000;
+const unsigned long DHT_INTERVAL_MS = 2500;
 unsigned long lastSentAt = 0;
+unsigned long buzzerHoldUntil = 0;
+unsigned long lastDhtReadMs = 0;
+bool lastSentBuzzer = false;
+bool lastSentDanger = false;
+int lastSentSoilMoisture = -1;
+int lastSentVibrationLevel = -1;
+float lastTemperature = NAN;
+float lastHumidity = NAN;
 WiFiClientSecure secureClient;
 
 int clampInt(int value, int minValue, int maxValue) {
@@ -61,7 +72,7 @@ int readVibrationRaw(bool* active) {
       pulses++;
     }
     previousState = state;
-    delay(5);
+    delay(2);
   }
 
   *active = pulses > 0 || digitalRead(VIBRATION_PIN) == VIBRATION_ACTIVE_STATE;
@@ -166,12 +177,7 @@ void setup() {
 
 void loop() {
   connectWiFi();
-
-  if (millis() - lastSentAt < SEND_INTERVAL_MS) {
-    delay(100);
-    return;
-  }
-  lastSentAt = millis();
+  unsigned long now = millis();
 
   int soilRaw = analogRead(SOIL_PIN);
   int soilMoisture = soilPercentFromRaw(soilRaw);
@@ -180,20 +186,50 @@ void loop() {
   int vibrationRaw = readVibrationRaw(&vibration);
   int vibrationLevel = vibrationPercentFromRaw(vibrationRaw);
 
-  float temperature = NAN;
-  float humidity = NAN;
-  if (USE_DHT) {
-    temperature = dht.readTemperature();
-    humidity = dht.readHumidity();
+  if (USE_DHT && (lastDhtReadMs == 0 || now - lastDhtReadMs >= DHT_INTERVAL_MS)) {
+    float temperatureRead = dht.readTemperature();
+    float humidityRead = dht.readHumidity();
+    if (!isnan(temperatureRead)) {
+      lastTemperature = temperatureRead;
+    }
+    if (!isnan(humidityRead)) {
+      lastHumidity = humidityRead;
+    }
+    lastDhtReadMs = now;
   }
 
+  float temperature = lastTemperature;
+  float humidity = lastHumidity;
   bool cold = !isnan(temperature) && temperature <= 24.0;
   bool wetSoil = soilMoisture >= 70;
   bool strongMovement = vibrationLevel >= 70;
   bool danger = strongMovement || (wetSoil && vibration) || (wetSoil && cold && vibration);
 
-  digitalWrite(BUZZER_PIN, danger ? HIGH : LOW);
+  if (danger) {
+    buzzerHoldUntil = now + BUZZER_HOLD_MS;
+  }
 
-  bool sent = postReading(soilRaw, soilMoisture, vibration, vibrationLevel, vibrationRaw, danger, temperature, humidity);
+  bool buzzer = now < buzzerHoldUntil;
+  digitalWrite(BUZZER_PIN, buzzer ? HIGH : LOW);
+
+  bool telemetryDue = now - lastSentAt >= TELEMETRY_INTERVAL_MS;
+  bool stateChanged = buzzer != lastSentBuzzer || danger != lastSentDanger;
+  bool valueChanged = lastSentSoilMoisture < 0 ||
+    abs(soilMoisture - lastSentSoilMoisture) >= 3 ||
+    abs(vibrationLevel - lastSentVibrationLevel) >= 8;
+  bool eventSendAllowed = now - lastSentAt >= MIN_EVENT_SEND_GAP_MS;
+  bool shouldSend = telemetryDue || ((stateChanged || danger || valueChanged) && eventSendAllowed);
+
+  if (!shouldSend) {
+    delay(20);
+    return;
+  }
+
+  bool sent = postReading(soilRaw, soilMoisture, vibration, vibrationLevel, vibrationRaw, buzzer, temperature, humidity);
+  lastSentAt = millis();
+  lastSentBuzzer = buzzer;
+  lastSentDanger = danger;
+  lastSentSoilMoisture = soilMoisture;
+  lastSentVibrationLevel = vibrationLevel;
   Serial.println(sent ? "[SEND] ok" : "[SEND] failed");
 }

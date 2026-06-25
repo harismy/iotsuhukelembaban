@@ -1,4 +1,5 @@
 const DATA_ENDPOINT = '/api/v1/latest';
+const EVENTS_ENDPOINT = '/api/v1/events';
 
 const elements = {
   statusDot: document.getElementById('statusDot'),
@@ -37,6 +38,7 @@ let isFetching = false;
 let autoRefreshInterval = null;
 let clockInterval = null;
 let animationFrame = null;
+let eventSource = null;
 
 const gaugeConfig = {
   soil: {
@@ -121,7 +123,7 @@ function animationLoop() {
     }
 
     const diff = state.target - state.current;
-    state.current = Math.abs(diff) > 0.01 ? state.current + diff * 0.08 : state.target;
+    state.current = Math.abs(diff) > 0.01 ? state.current + diff * 0.32 : state.target;
     renderGauge(key, state.current);
   });
 
@@ -272,7 +274,34 @@ function startAutoRefresh() {
   if (autoRefreshInterval) {
     clearInterval(autoRefreshInterval);
   }
-  autoRefreshInterval = setInterval(fetchSensorData, 3000);
+  autoRefreshInterval = setInterval(fetchSensorData, 1000);
+}
+
+function startRealtimeEvents() {
+  if (!window.EventSource) {
+    return;
+  }
+
+  if (eventSource) {
+    eventSource.close();
+  }
+
+  eventSource = new EventSource(EVENTS_ENDPOINT);
+  eventSource.onopen = () => {
+    updateConnectionUI(true);
+  };
+  eventSource.onmessage = (event) => {
+    try {
+      const payload = JSON.parse(event.data);
+      renderSensorData(payload.data || {});
+      updateConnectionUI(true);
+    } catch (error) {
+      updateConnectionUI(false, 'Data realtime tidak valid');
+    }
+  };
+  eventSource.onerror = () => {
+    updateConnectionUI(false, 'Realtime reconnecting...');
+  };
 }
 
 function startClock() {
@@ -286,6 +315,7 @@ function startClock() {
 window.addEventListener('DOMContentLoaded', () => {
   startClock();
   animationFrame = requestAnimationFrame(animationLoop);
+  startRealtimeEvents();
   fetchSensorData();
   startAutoRefresh();
   elements.refreshBtn.addEventListener('click', manualRefresh);
@@ -300,5 +330,8 @@ window.addEventListener('beforeunload', () => {
   }
   if (animationFrame) {
     cancelAnimationFrame(animationFrame);
+  }
+  if (eventSource) {
+    eventSource.close();
   }
 });

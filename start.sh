@@ -142,7 +142,7 @@ SOIL_DAMP_PERCENT=50
 COLD_TEMPERATURE=24
 VIBRATION_STRONG=70
 VIBRATION_MEDIUM=35
-VIBRATION_MAX_RAW=12
+VIBRATION_MAX_RAW=4
 SOIL_DRY_RAW=3200
 SOIL_WET_RAW=1200
 EOF
@@ -198,7 +198,7 @@ else
   ensure_env_default "COLD_TEMPERATURE" "24"
   ensure_env_default "VIBRATION_STRONG" "70"
   ensure_env_default "VIBRATION_MEDIUM" "35"
-  ensure_env_default "VIBRATION_MAX_RAW" "12"
+  ensure_env_default "VIBRATION_MAX_RAW" "4"
   ensure_env_default "SOIL_DRY_RAW" "3200"
   ensure_env_default "SOIL_WET_RAW" "1200"
 fi
@@ -220,6 +220,19 @@ sudo tee "$NGINX_CONF" >/dev/null <<EOF
 server {
     listen 80;
     server_name ${DOMAIN};
+
+    location /api/v1/events {
+        proxy_pass http://127.0.0.1:${APP_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 1h;
+        add_header X-Accel-Buffering no;
+    }
 
     location / {
         proxy_pass http://127.0.0.1:${APP_PORT};
